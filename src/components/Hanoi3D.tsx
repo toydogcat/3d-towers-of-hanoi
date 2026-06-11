@@ -181,7 +181,7 @@ export default function Hanoi3D({
 
     // 5. Create Discs
     // Max level has 12 discs. We instantiate physical disc meshes for the current level's disc counts.
-    const discCount = gameStateRef.value.discCount;
+    const discCount = gameStateRef.current.discCount;
     const currentDiscsMeshes: { [size: number]: THREE.Mesh } = {};
 
     for (let size = 1; size <= discCount; size++) {
@@ -192,7 +192,7 @@ export default function Hanoi3D({
       // Create rounded cylinder using Torus & Cylinder or simply standard segment beveled cylinders.
       // A standard cylinder with radial segments makes an elegant disk!
       const discGeo = new THREE.CylinderGeometry(discRadius, discRadius, discThickness, 32);
-      
+
       // Let's create an elegant translucent glassy material
       const discMat = new THREE.MeshPhysicalMaterial({
         color: DISC_COLORS[(size - 1) % DISC_COLORS.length],
@@ -207,7 +207,7 @@ export default function Hanoi3D({
       const discMesh = new THREE.Mesh(discGeo, discMat);
       discMesh.castShadow = true;
       discMesh.receiveShadow = true;
-      
+
       // Also we can add a beautiful gold insert torus in the middle for high precision details!
       const insertGeo = new THREE.TorusGeometry(0.24, 0.08, 8, 16);
       insertGeo.rotateX(Math.PI / 2);
@@ -226,7 +226,7 @@ export default function Hanoi3D({
       // Initialize resting coordinate instantly based on pegs
       let foundPeg = 0;
       let heightIdx = 0;
-      gameStateRef.value.pegs.forEach((pegStack, pIdx) => {
+      gameStateRef.current.pegs.forEach((pegStack, pIdx) => {
         const foundIdx = pegStack.indexOf(size);
         if (foundIdx !== -1) {
           foundPeg = pIdx;
