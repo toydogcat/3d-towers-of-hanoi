@@ -59,11 +59,27 @@ const PRESEEDED_MACROS: Macro[] = [
 export default function App() {
   // Load levels or general states.
   // Level 1: 3 discs; Level i: i + 2 discs; Level 10: 12 discs.
-  const [level, setLevel] = useState<number>(1);
+  const [level, setLevel] = useState<number>(() => {
+    const saved = localStorage.getItem('hanoi_level');
+    if (saved) {
+      const lvl = parseInt(saved, 10);
+      if (lvl >= 1 && lvl <= 10) return lvl;
+    }
+    return 1;
+  });
   const [status, setStatus] = useState<GameStatus>('idle');
-  const [pegs, setPegs] = useState<number[][]>([[3, 2, 1], [], []]);
+  const [pegs, setPegs] = useState<number[][]>(() => {
+    // We will initialize the pegs stack based on the loaded level
+    const saved = localStorage.getItem('hanoi_level');
+    const lvl = saved ? parseInt(saved, 10) : 1;
+    const initialLvl = (lvl >= 1 && lvl <= 10) ? lvl : 1;
+    const dCount = initialLvl + 2;
+    const initialStack = Array.from({ length: dCount }, (_, i) => dCount - i);
+    return [initialStack, [], []];
+  });
   const [selectedPeg, setSelectedPeg] = useState<number | null>(null);
   const [movesCount, setMovesCount] = useState<number>(0);
+  const [history, setHistory] = useState<number[][][]>([]);
 
   // Sound state
   const [soundEnabled, setSoundEnabled] = useState<boolean>(true);
@@ -72,7 +88,21 @@ export default function App() {
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordingMoves, setRecordingMoves] = useState<{ from: number; to: number }[]>([]);
   const [recordingSourcePeg, setRecordingSourcePeg] = useState<number | null>(null);
-  const [macros, setMacros] = useState<Macro[]>(PRESEEDED_MACROS);
+  const [macros, setMacros] = useState<Macro[]>(() => {
+    const saved = localStorage.getItem('hanoi_custom_macros');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const custom = parsed.filter((m: any) => m && m.id && !m.id.startsWith('preset'));
+          return [...PRESEEDED_MACROS, ...custom];
+        }
+      } catch (e) {
+        console.error('Error loading custom macros:', e);
+      }
+    }
+    return PRESEEDED_MACROS;
+  });
   const [selectedMacroId, setSelectedMacroId] = useState<string>('preset-2-discs');
   
   // Custom execution parameters
@@ -123,6 +153,7 @@ export default function App() {
     setPegs([initialStack, [], []]);
     setSelectedPeg(null);
     setMovesCount(0);
+    setHistory([]);
     setStatus('playing');
     setAutoplayingMoves(null);
     setAutoplayIndex(0);
@@ -139,6 +170,17 @@ export default function App() {
   useEffect(() => {
     resetLevel(level);
   }, [level]);
+
+  // Save level to localStorage
+  useEffect(() => {
+    localStorage.setItem('hanoi_level', level.toString());
+  }, [level]);
+
+  // Save custom macros to localStorage
+  useEffect(() => {
+    const custom = macros.filter((m) => !m.id.startsWith('preset'));
+    localStorage.setItem('hanoi_custom_macros', JSON.stringify(custom));
+  }, [macros]);
 
   // Handle Autoplay timer
   useEffect(() => {
@@ -217,6 +259,7 @@ export default function App() {
       return stack;
     });
 
+    setHistory((prev) => [...prev, pegs]);
     setPegs(updatedPegs);
     setMovesCount((prev) => prev + 1);
     sounds.playDiscDrop();
@@ -233,6 +276,54 @@ export default function App() {
     // Check Win status (but wait, in React, we inspect the updated value or trigger it downstream)
     checkAndTriggerWin(updatedPegs);
     return true;
+  };
+
+  const undo = () => {
+    if (history.length === 0 || status === 'autoplaying') return;
+    const prevPegs = history[history.length - 1];
+    setPegs(prevPegs);
+    setHistory((prev) => prev.slice(0, -1));
+    setMovesCount((prev) => Math.max(0, prev - 1));
+    setSelectedPeg(null);
+    sounds.playDiscDrop();
+    showFeedback('↩️ 已復原上一步操作。', 'info');
+  };
+
+  const generateHanoiMoves = (n: number, from: number, to: number, aux: number): { from: number; to: number }[] => {
+    const steps: { from: number; to: number }[] = [];
+    const solve = (discs: number, f: number, t: number, a: number) => {
+      if (discs === 1) {
+        steps.push({ from: f, to: t });
+        return;
+      }
+      solve(discs - 1, f, a, t);
+      steps.push({ from: f, to: t });
+      solve(discs - 1, a, t, f);
+    };
+    solve(n, from, to, aux);
+    return steps;
+  };
+
+  const startAiSolve = () => {
+    sounds.init();
+    const dCount = level + 2;
+    const initialStack = Array.from({ length: dCount }, (_, i) => dCount - i);
+    
+    // Reset state for autoplay
+    setPegs([initialStack, [], []]);
+    setSelectedPeg(null);
+    setMovesCount(0);
+    setHistory([]);
+    setIsRecording(false);
+    setRecordingMoves([]);
+    setRecordingSourcePeg(null);
+    
+    const steps = generateHanoiMoves(dCount, 0, 2, 1);
+    setAutoplayIndex(0);
+    setAutoplayingMoves(steps);
+    setStatus('autoplaying');
+    sounds.playMacroStart();
+    showFeedback(`🤖 AI 遞迴求解器啟動！共需 ${steps.length} 步。`, 'info');
   };
 
   const checkAndTriggerWin = (currentPegs: number[][]) => {
@@ -429,6 +520,18 @@ export default function App() {
             <span>{soundEnabled ? '音效已開' : '靜音'}</span>
           </button>
 
+          {/* AI Solver Button */}
+          <button
+            onClick={startAiSolve}
+            disabled={status === 'autoplaying'}
+            className="p-3 px-4 rounded-xl border border-white/10 text-slate-300 hover:text-cyan-400 hover:border-white/20 bg-white/5 backdrop-blur-xl transition-all flex items-center gap-2 text-xs font-semibold shadow-lg disabled:opacity-40 disabled:cursor-not-allowed"
+            title="AI 遞迴自動求解"
+            id="ai-solve-btn"
+          >
+            <Cpu className="w-4 h-4 text-purple-400 animate-pulse" />
+            <span>AI 自動求解</span>
+          </button>
+
           {/* Rules Button */}
           <button
             onClick={() => setShowRules(true)}
@@ -609,6 +712,16 @@ export default function App() {
 
               {/* Game Control Action Group */}
               <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                <button
+                  disabled={history.length === 0 || status === 'autoplaying'}
+                  onClick={undo}
+                  className="flex-1 sm:flex-initial py-2.5 px-4 rounded-xl border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-cyan-300 transition-all text-xs font-semibold flex items-center justify-center gap-2 shadow-md disabled:opacity-40 disabled:hover:text-slate-300 disabled:cursor-not-allowed"
+                  title="復原上一步 (Undo)"
+                  id="undo-btn"
+                >
+                  <span className="text-xs">↩️ 復原一步</span>
+                </button>
+
                 <button
                   onClick={() => resetLevel(level)}
                   className="flex-1 sm:flex-initial py-2.5 px-4 rounded-xl border border-white/10 hover:border-white/20 bg-white/5 hover:bg-white/10 text-slate-350 hover:text-cyan-300 transition-all text-xs font-semibold flex items-center justify-center gap-2 shadow-md"

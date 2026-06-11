@@ -19,6 +19,9 @@ const DISC_COLORS = [
   0x14b8a6, // 12: Emerald Deep
 ];
 
+const PEG_POSITIONS_X = [-9.5, 0, 9.5];
+const DISC_THICKNESS = 0.42;
+
 interface Hanoi3DProps {
   gameState: GameState;
   onPegClick: (pegIndex: number) => void;
@@ -62,7 +65,10 @@ export default function Hanoi3D({
     gameStateRef.current = gameState;
   }, [gameState]);
 
-  // Handle Three.js initialization and main loop
+  const [isSceneReady, setIsSceneReady] = useState(false);
+  const sceneRef = useRef<THREE.Scene | null>(null);
+
+  // Hook 1: Three.js Setup (Runs ONCE on mount)
   useEffect(() => {
     if (!canvasRef.current || !mountRef.current) return;
 
@@ -73,6 +79,7 @@ export default function Hanoi3D({
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0a0f1d); // Dark Slate Blue background
     scene.fog = new THREE.FogExp2(0x0a0f1d, 0.015);
+    sceneRef.current = scene;
 
     const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 150);
     const renderer = new THREE.WebGLRenderer({
@@ -137,7 +144,6 @@ export default function Hanoi3D({
       roughness: 0.1,
     });
 
-    const pegPositionsX = [-9.5, 0, 9.5];
     const pegs: THREE.Mesh[] = [];
     const hitboxes: THREE.Mesh[] = [];
 
@@ -147,7 +153,7 @@ export default function Hanoi3D({
       visible: false, // hidden in UI but detectable by raycaster
     });
 
-    pegPositionsX.forEach((x, index) => {
+    PEG_POSITIONS_X.forEach((x, index) => {
       // Create the core rod
       const pegMesh = new THREE.Mesh(pegGeometry, pegMaterial);
       pegMesh.position.set(x, 2.5, 0); // half height since base is at Y=0
@@ -179,68 +185,9 @@ export default function Hanoi3D({
       hitboxes.push(hitboxMesh);
     });
 
-    // 5. Create Discs
-    // Max level has 12 discs. We instantiate physical disc meshes for the current level's disc counts.
-    const discCount = gameStateRef.current.discCount;
-    const currentDiscsMeshes: { [size: number]: THREE.Mesh } = {};
+    setIsSceneReady(true);
 
-    for (let size = 1; size <= discCount; size++) {
-      // compute radius proportionally: biggest is radius=4.0, smallest size 1 is radius 1.25
-      const discRadius = 0.9 + size * 0.22;
-      const discThickness = 0.42;
-
-      // Create rounded cylinder using Torus & Cylinder or simply standard segment beveled cylinders.
-      // A standard cylinder with radial segments makes an elegant disk!
-      const discGeo = new THREE.CylinderGeometry(discRadius, discRadius, discThickness, 32);
-
-      // Let's create an elegant translucent glassy material
-      const discMat = new THREE.MeshPhysicalMaterial({
-        color: DISC_COLORS[(size - 1) % DISC_COLORS.length],
-        roughness: 0.1,
-        metalness: 0.2,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.1,
-        transmission: 0.3, // Give a classy translucent modern look
-        thickness: 0.5,
-      });
-
-      const discMesh = new THREE.Mesh(discGeo, discMat);
-      discMesh.castShadow = true;
-      discMesh.receiveShadow = true;
-
-      // Also we can add a beautiful gold insert torus in the middle for high precision details!
-      const insertGeo = new THREE.TorusGeometry(0.24, 0.08, 8, 16);
-      insertGeo.rotateX(Math.PI / 2);
-      const insertMat = new THREE.MeshStandardMaterial({
-        color: 0xd4af37,
-        metalness: 0.95,
-        roughness: 0.1,
-      });
-      const insertMesh = new THREE.Mesh(insertGeo, insertMat);
-      insertMesh.position.y = 0.0;
-      discMesh.add(insertMesh);
-
-      scene.add(discMesh);
-      currentDiscsMeshes[size] = discMesh;
-
-      // Initialize resting coordinate instantly based on pegs
-      let foundPeg = 0;
-      let heightIdx = 0;
-      gameStateRef.current.pegs.forEach((pegStack, pIdx) => {
-        const foundIdx = pegStack.indexOf(size);
-        if (foundIdx !== -1) {
-          foundPeg = pIdx;
-          heightIdx = foundIdx;
-        }
-      });
-
-      const startX = pegPositionsX[foundPeg];
-      const startY = heightIdx * discThickness + discThickness / 2;
-      discMesh.position.set(startX, startY, 0);
-    }
-    discsMeshesRef.current = currentDiscsMeshes;
-
-    // 6. Camera Position Orbit Math Constants
+    // 5. Camera Position Orbit Math Constants
     const updateCameraPosition = () => {
       const { theta, phi } = cameraAngleRef.current;
       const orbitRadius = orbitRadiusRef.current;
@@ -251,7 +198,7 @@ export default function Hanoi3D({
     };
     updateCameraPosition();
 
-    // 7. Raycaster Setup for interaction
+    // 6. Raycaster Setup for interaction
     const raycaster = new THREE.Raycaster();
     const touchPoint = new THREE.Vector2();
 
@@ -269,7 +216,7 @@ export default function Hanoi3D({
       return null;
     };
 
-    // 8. Event listeners
+    // 7. Event listeners
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       const zoomSpeed = 0.05;
@@ -358,7 +305,7 @@ export default function Hanoi3D({
     dom.addEventListener('touchmove', handlePointerMove, { passive: true });
     window.addEventListener('touchend', handlePointerUp);
 
-    // 9. Resize Observer for proper fit in containers
+    // 8. Resize Observer for proper fit in containers
     const resizeObserver = new ResizeObserver((entries) => {
       for (let entry of entries) {
         const { width, height } = entry.contentRect;
@@ -371,14 +318,17 @@ export default function Hanoi3D({
     });
     resizeObserver.observe(mountRef.current);
 
-    // 10. Frame Render Animation Tick loop!
+    // 9. Frame Render Animation Tick loop!
     let animationFrameId: number;
     const peakY = 5.8; // Peak height for discs to slide safely over rods
-    const discThickness = 0.42;
     const speed = 0.22; // Quick, satisfying slide interpolation speed
+    const clock = new THREE.Clock();
 
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
+
+      const delta = Math.min(0.1, clock.getDelta());
+      const fpsAdjustedSpeed = 1 - Math.pow(1 - speed, delta * 60);
 
       const state = gameStateRef.current;
       const pegsData = state.pegs;
@@ -412,14 +362,14 @@ export default function Hanoi3D({
 
       // Animate Discs based on current stack positions
       pegsData.forEach((pegStack, pegIdx) => {
-        const targetX = pegPositionsX[pegIdx];
+        const targetX = PEG_POSITIONS_X[pegIdx];
 
         pegStack.forEach((discSize, stackIdx) => {
-          const discMesh = currentDiscsMeshes[discSize];
+          const discMesh = discsMeshesRef.current[discSize];
           if (!discMesh) return;
 
           // Compute resting height Y
-          let targetY = stackIdx * discThickness + discThickness / 2;
+          let targetY = stackIdx * DISC_THICKNESS + DISC_THICKNESS / 2;
 
           // If this is the TOP disc of a SELECTED peg, let it float invitingly!
           const isTopDisc = stackIdx === pegStack.length - 1;
@@ -453,10 +403,10 @@ export default function Hanoi3D({
           }
 
           // Apply interpolation
-          discMesh.position.x += (nextTX - curX) * speed;
-          discMesh.position.y += (nextTY - curY) * speed;
+          discMesh.position.x += (nextTX - curX) * fpsAdjustedSpeed;
+          discMesh.position.y += (nextTY - curY) * fpsAdjustedSpeed;
           // smooth rotation or subtle floating
-          discMesh.position.z += (0 - discMesh.position.z) * speed;
+          discMesh.position.z += (0 - discMesh.position.z) * fpsAdjustedSpeed;
         });
       });
 
@@ -465,7 +415,7 @@ export default function Hanoi3D({
 
     animate();
 
-    // 11. Cleanup
+    // 10. Cleanup
     return () => {
       cancelAnimationFrame(animationFrameId);
       resizeObserver.disconnect();
@@ -480,9 +430,91 @@ export default function Hanoi3D({
       // dispose meshes & geometries
       scene.clear();
       renderer.dispose();
+      sceneRef.current = null;
+      setIsSceneReady(false);
     };
 
-  }, [gameState.discCount]); // Re-init when disc count changes (e.g. changing level)
+  }, []); // Run once on mount
+
+  // Hook 2: Discs Setup & Update (runs when discCount changes or scene becomes ready)
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (!isSceneReady || !scene) return;
+
+    // 1. Remove old discs from scene and dispose resources
+    const oldMeshes = Object.values(discsMeshesRef.current) as THREE.Mesh[];
+    oldMeshes.forEach((mesh) => {
+      scene.remove(mesh);
+      mesh.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          if (Array.isArray(child.material)) {
+            child.material.forEach((mat) => mat.dispose());
+          } else {
+            child.material.dispose();
+          }
+        }
+      });
+      mesh.geometry.dispose();
+      if (Array.isArray(mesh.material)) {
+        mesh.material.forEach((mat) => mat.dispose());
+      } else {
+        mesh.material.dispose();
+      }
+    });
+    discsMeshesRef.current = {};
+
+    // 2. Recreate discs for current discCount
+    const discCount = gameState.discCount;
+    const currentDiscsMeshes: { [size: number]: THREE.Mesh } = {};
+
+    for (let size = 1; size <= discCount; size++) {
+      const discRadius = 0.9 + size * 0.22;
+      const discGeo = new THREE.CylinderGeometry(discRadius, discRadius, DISC_THICKNESS, 32);
+      const discMat = new THREE.MeshPhysicalMaterial({
+        color: DISC_COLORS[(size - 1) % DISC_COLORS.length],
+        roughness: 0.1,
+        metalness: 0.2,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.1,
+        transmission: 0.3,
+        thickness: 0.5,
+      });
+
+      const discMesh = new THREE.Mesh(discGeo, discMat);
+      discMesh.castShadow = true;
+      discMesh.receiveShadow = true;
+
+      const insertGeo = new THREE.TorusGeometry(0.24, 0.08, 8, 16);
+      insertGeo.rotateX(Math.PI / 2);
+      const insertMat = new THREE.MeshStandardMaterial({
+        color: 0xd4af37,
+        metalness: 0.95,
+        roughness: 0.1,
+      });
+      const insertMesh = new THREE.Mesh(insertGeo, insertMat);
+      discMesh.add(insertMesh);
+
+      scene.add(discMesh);
+      currentDiscsMeshes[size] = discMesh;
+
+      // Initialize resting coordinate instantly based on pegs
+      let foundPeg = 0;
+      let heightIdx = 0;
+      gameStateRef.current.pegs.forEach((pegStack, pIdx) => {
+        const foundIdx = pegStack.indexOf(size);
+        if (foundIdx !== -1) {
+          foundPeg = pIdx;
+          heightIdx = foundIdx;
+        }
+      });
+
+      const startX = PEG_POSITIONS_X[foundPeg];
+      const startY = heightIdx * DISC_THICKNESS + DISC_THICKNESS / 2;
+      discMesh.position.set(startX, startY, 0);
+    }
+    discsMeshesRef.current = currentDiscsMeshes;
+  }, [isSceneReady, gameState.discCount]); // Re-init when disc count changes (e.g. changing level)
 
   return (
     <div ref={mountRef} className="w-full h-full relative overflow-hidden select-none bg-slate-950">
