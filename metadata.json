@@ -1,0 +1,6 @@
+{
+  "name": "3D Towers of Hanoi",
+  "description": "An interactive 3D Towers of Hanoi game built with Three.js, featuring 10 progressive levels and an advanced recursive macro copying feature unlocked at level 4.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
