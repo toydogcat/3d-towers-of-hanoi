@@ -51,13 +51,15 @@ export default function Hanoi3D({
     theta: Math.PI / 2, // horizontal orbit angle (centered)
     phi: 0.45,         // vertical tilt angle
   });
+  const orbitRadiusRef = useRef<number>(24);
   const isDraggingCamera = useRef(false);
   const previousMousePosition = useRef({ x: 0, y: 0 });
+  const previousTouchDistance = useRef<number | null>(null);
 
   // Store game state in ref to avoid recreating the Three.js loop or context
   const gameStateRef = useRef<GameState>(gameState);
   useEffect(() => {
-    gameStateRef.value = gameState;
+    gameStateRef.current = gameState;
   }, [gameState]);
 
   // Handle Three.js initialization and main loop
@@ -72,7 +74,7 @@ export default function Hanoi3D({
     scene.background = new THREE.Color(0x0a0f1d); // Dark Slate Blue background
     scene.fog = new THREE.FogExp2(0x0a0f1d, 0.015);
 
-    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 100);
+    const camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 150);
     const renderer = new THREE.WebGLRenderer({
       canvas: canvasRef.current,
       antialias: true,
@@ -239,9 +241,9 @@ export default function Hanoi3D({
     discsMeshesRef.current = currentDiscsMeshes;
 
     // 6. Camera Position Orbit Math Constants
-    const orbitRadius = 24;
     const updateCameraPosition = () => {
       const { theta, phi } = cameraAngleRef.current;
+      const orbitRadius = orbitRadiusRef.current;
       camera.position.x = orbitRadius * Math.sin(theta) * Math.cos(phi);
       camera.position.y = orbitRadius * Math.sin(phi);
       camera.position.z = orbitRadius * Math.cos(theta) * Math.cos(phi);
@@ -268,7 +270,23 @@ export default function Hanoi3D({
     };
 
     // 8. Event listeners
+    const handleWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const zoomSpeed = 0.05;
+      orbitRadiusRef.current = Math.max(12, Math.min(60, orbitRadiusRef.current + e.deltaY * zoomSpeed));
+      updateCameraPosition();
+    };
+
     const handlePointerDown = (e: MouseEvent | TouchEvent) => {
+      if ('touches' in e && e.touches.length === 2) {
+        // Pinch zoom start
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        previousTouchDistance.current = Math.sqrt(dx * dx + dy * dy);
+        isDraggingCamera.current = false;
+        return;
+      }
+
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
@@ -285,6 +303,22 @@ export default function Hanoi3D({
     };
 
     const handlePointerMove = (e: MouseEvent | TouchEvent) => {
+      if ('touches' in e && e.touches.length === 2) {
+        // Pinch zoom move
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        
+        if (previousTouchDistance.current !== null) {
+          const delta = distance - previousTouchDistance.current;
+          const zoomSpeed = 0.1;
+          orbitRadiusRef.current = Math.max(12, Math.min(60, orbitRadiusRef.current - delta * zoomSpeed));
+          updateCameraPosition();
+        }
+        previousTouchDistance.current = distance;
+        return;
+      }
+
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
@@ -311,11 +345,13 @@ export default function Hanoi3D({
 
     const handlePointerUp = () => {
       isDraggingCamera.current = false;
+      previousTouchDistance.current = null;
     };
 
     const dom = renderer.domElement;
     dom.addEventListener('mousedown', handlePointerDown);
     dom.addEventListener('mousemove', handlePointerMove);
+    dom.addEventListener('wheel', handleWheel, { passive: false });
     window.addEventListener('mouseup', handlePointerUp);
 
     dom.addEventListener('touchstart', handlePointerDown, { passive: true });
@@ -330,6 +366,7 @@ export default function Hanoi3D({
         renderer.setSize(width, actHeight);
         camera.aspect = width / actHeight;
         camera.updateProjectionMatrix();
+        updateCameraPosition(); // Refresh on resize
       }
     });
     resizeObserver.observe(mountRef.current);
@@ -343,7 +380,7 @@ export default function Hanoi3D({
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate);
 
-      const state = gameStateRef.value;
+      const state = gameStateRef.current;
       const pegsData = state.pegs;
       const selectedPegIndex = state.selectedPeg;
 
@@ -434,6 +471,7 @@ export default function Hanoi3D({
       resizeObserver.disconnect();
       dom.removeEventListener('mousedown', handlePointerDown);
       dom.removeEventListener('mousemove', handlePointerMove);
+      dom.removeEventListener('wheel', handleWheel);
       window.removeEventListener('mouseup', handlePointerUp);
       dom.removeEventListener('touchstart', handlePointerDown);
       dom.removeEventListener('touchmove', handlePointerMove);
@@ -443,6 +481,7 @@ export default function Hanoi3D({
       scene.clear();
       renderer.dispose();
     };
+
   }, [gameState.discCount]); // Re-init when disc count changes (e.g. changing level)
 
   return (
@@ -451,9 +490,10 @@ export default function Hanoi3D({
 
       {/* Guide & Controls Label */}
       <div className="absolute top-4 left-4 text-xs font-mono bg-slate-900/80 backdrop-blur-md px-3 py-2 rounded border border-slate-700/50 text-slate-300 pointer-events-none select-none max-w-xs space-y-1">
-        <p className="text-sky-400 font-semibold">🎮 滑鼠操作指引：</p>
-        <p>• 點擊 3D 柱子或盤子：選擇/移至該柱</p>
-        <p>• 拖曳背景空白處：轉動 3D 視角觀看</p>
+        <p className="text-sky-400 font-semibold">🎮 操作指引：</p>
+        <p>• 點擊柱子或盤子：選擇/移至該柱</p>
+        <p>• 拖曳背景：轉動 3D 視角</p>
+        <p>• 滾輪 / 雙指縮放：拉遠拉近視距</p>
       </div>
 
       {/* Selected Indicator overlay */}
