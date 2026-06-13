@@ -1083,7 +1083,7 @@ export default function App() {
             <header className="space-y-1">
               <h3 className="text-base font-extrabold text-slate-200 flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-emerald-400" />
-                河內塔 3D 規則與「遞迴巨集」說明
+                河內塔 3D 規則說明
               </h3>
               <p className="text-xs text-slate-400">
                 本遊戲完美結合經典難題與電腦程式設計思維！
@@ -1093,10 +1093,11 @@ export default function App() {
             <div className="text-xs text-slate-300 space-y-3 font-serif leading-relaxed max-h-[350px] overflow-y-auto pr-2">
               <section className="space-y-1 bg-slate-950/40 p-3 rounded-lg border border-slate-800/80">
                 <h4 className="font-bold text-sky-400">💡 經典規則：</h4>
-                <p>1. 您的目標：將所有盤子從 <strong>柱 1 (左)</strong> 完全轉移至 <strong>柱 3 (右)</strong>。</p>
+                <p>1. 您的目標：將所有盤子從 <strong>柱 1 (左，藍色起始柱)</strong> 完全轉移至 <strong>柱 3 (右，紫色目標柱)</strong>。</p>
                 <p>2. 一次只能移動最上方的一個盤子。</p>
                 <p>3. <strong>核心限制：</strong>任何時候，較大的盤子永遠不能放置在較小的盤子之上。</p>
                 <p>4. 盤子共 $N$ 個的關卡，數學上的最少移動步數為 $2^N - 1$ 步。</p>
+                <p>5. <strong>柱子顏色說明：</strong>左側起始柱為<strong>藍色</strong>，中間過渡柱為<strong>金色</strong>，右側目標柱為<strong>紫色</strong>，以利於快速辨識。</p>
               </section>
 
               <section className="space-y-1.5 bg-slate-950/40 p-3 rounded-lg border border-slate-800/80">

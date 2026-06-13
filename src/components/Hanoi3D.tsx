@@ -51,7 +51,7 @@ export default function Hanoi3D({
 
   // Camera orientation angles
   const cameraAngleRef = useRef<{ theta: number; phi: number }>({
-    theta: Math.PI / 2, // horizontal orbit angle (centered)
+    theta: 0,          // horizontal orbit angle (centered facing front)
     phi: 0.45,         // vertical tilt angle
   });
   const orbitRadiusRef = useRef<number>(24);
@@ -138,10 +138,22 @@ export default function Hanoi3D({
 
     // 4. Rods (Pegs) setup
     const pegGeometry = new THREE.CylinderGeometry(0.22, 0.22, 5.0, 16);
-    const pegMaterial = new THREE.MeshStandardMaterial({
+    
+    // Peg materials: Left is blue, middle is gold, right is purple
+    const leftPegMaterial = new THREE.MeshStandardMaterial({
+      color: 0x3b82f6, // Sleek Blue
+      metalness: 0.8,
+      roughness: 0.2,
+    });
+    const middlePegMaterial = new THREE.MeshStandardMaterial({
       color: 0xd4af37, // Polished brass gold
       metalness: 0.9,
       roughness: 0.1,
+    });
+    const rightPegMaterial = new THREE.MeshStandardMaterial({
+      color: 0x8b5cf6, // Sleek Purple
+      metalness: 0.8,
+      roughness: 0.2,
     });
 
     const pegs: THREE.Mesh[] = [];
@@ -154,8 +166,12 @@ export default function Hanoi3D({
     });
 
     PEG_POSITIONS_X.forEach((x, index) => {
-      // Create the core rod
-      const pegMesh = new THREE.Mesh(pegGeometry, pegMaterial);
+      // Create the core rod with color matching its role
+      let currentPegMat = middlePegMaterial;
+      if (index === 0) currentPegMat = leftPegMaterial;
+      if (index === 2) currentPegMat = rightPegMaterial;
+
+      const pegMesh = new THREE.Mesh(pegGeometry, currentPegMat);
       pegMesh.position.set(x, 2.5, 0); // half height since base is at Y=0
       pegMesh.castShadow = true;
       pegMesh.receiveShadow = true;
